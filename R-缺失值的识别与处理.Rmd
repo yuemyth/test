@@ -1,0 +1,301 @@
+---
+title: "R-缺失值的识别与处理"
+author: "yue"
+date: "2020/5/3"
+output: html_document
+---
+
+
+
+# R-缺失值的识别与处理
+
+缺失值是我们进行批量数据处理中常常遇到的一个问题，比如研究中常常遇到指标缺失，需要对缺失进行统计，然后进一步判断，是丢弃这些变量呢（丢弃一般不太好），还是对数据进行替换，插补等操作后进行建模。下面讲一下R中的缺失值的识别与处理：
+
+[TOC]
+
+
+
+# 0、缺失值定义
+
+缺失值从数据分布上可被分为三类 ：完全随机缺失（MCAR）, 随机缺失（MAR）, 非随机缺失（NMAR）。
+
+- 完全随机缺失（MCAR）：若某变量的缺失数据与其他任何观测或未观测变量都不相关
+- 随机缺失（MAR）：若某变量上的缺失数据与其他观测变量相关，与它自己的未观测值不相关
+- 非随机缺失（NMAR）：某一变量的缺失和该变量本身的数值相关；或者若缺失数据不属于MCAR或MAR，则数据为非随机缺失。如，仪器的最低检测线：某被检测物质的含量低于该检测线则会产生非随机缺失(left-censored missing)；做梦时长越短的动物也更可能有做梦数据的缺失（可能由于难以测量时长较短的事件）, 那么数据可认为是NMAR。
+
+目前大部分填补缺失值的方法都是基于MCAR和MAR，对于这些数据，可以忽略缺失数据的生成机制，并且（在替换或删除缺失数据后）可以直接对感兴趣的关系进行建模。当数据是NMAR时，想对它进行恰当地分析比较困难，你既要对感兴趣的关系进行建模，还要对缺失值的生成机制进行建模。（目前分析NMAR数据的方法有模型选择法和模式混合法。由于NMAR数据的分析十分复杂，我们将忽略对它的讨论。）
+
+## 1、识别缺失值
+
+```
+a <- c(1,2,3,4)
+b <- c(6,7,8,NA)
+m <- cbind(a,b)
+m
+
+# m
+#     a  b
+#[1,] 1  6
+#[2,] 2  7
+#[3,] 3  8
+#[4,] 4 NA
+```
+
+### **1.1** 对NA进行统计，可以用**sum函数和is.na连用**；或用**colSums函数**
+
+```
+> sum(is.na(m))
+[1] 1
+#或者对行和列分别进行统计，注意colSums和rowSums是中间的大写
+> colSums(is.na(m))
+a b 
+0 1 
+> rowSums(is.na(m))
+[1] 0 0 0 1
+```
+
+- 或者可以用**summary函数**
+
+![img](https://pic2.zhimg.com/v2-7c5cf27ff9c0715f53eea07ee519e979_b.png)
+
+- 可以用sapply函数，**sapply(m, function(x) sum(is.na(x)))**
+
+![img](https://pic1.zhimg.com/v2-1d0a2c9111d1fb6db64426475cf9ca8c_b.png)
+
+### **1.2** 用Hmisc包中的describe()
+
+```
+> library(Hmisc)
+> Hmisc::describe(m)
+m 
+
+ 2  Variables      4  Observations
+--------------------------------------------------------------------------------------------------
+a 
+       n  missing distinct     Info     Mean      Gmd 
+       4        0        4        1      2.5    1.667 
+                              
+Value         1    2    3    4
+Frequency     1    1    1    1
+Proportion 0.25 0.25 0.25 0.25
+--------------------------------------------------------------------------------------------------
+b 
+       n  missing distinct     Info     Mean      Gmd 
+       3        1        3        1        7    1.333 
+                            
+Value          6     7     8
+Frequency      1     1     1
+Proportion 0.333 0.333 0.333
+--------------------------------------------------------------------------------------------------
+```
+
+### **1.3** 用**psych包中的describe()计算缺失值（效果较好）**
+
+```
+psych::describe(m)
+  vars n mean   sd median trimmed  mad min max range skew kurtosis   se
+a    1 4  2.5 1.29    2.5     2.5 1.48   1   4     3    0    -2.08 0.65
+b    2 3  7.0 1.00    7.0     7.0 1.48   6   8     2    0    -2.33 0.58
+```
+
+### **1.4** mice包中的mice包中的md.pattern()函数。会出现一个二维的表格，以及对应的图（如果数据较多，作图可能会慢一些）
+
+```
+#从这开始以diabetes数据集为例,包含在VIM包中
+library(VIM)
+library(mice)
+data('diabetes')
+d <- diabetes
+```
+
+![img](https://pic2.zhimg.com/v2-1ea78c2756916c9396b2d25bc85f59f5_b.png)
+
+diabetes数据集
+
+![img](https://pic2.zhimg.com/v2-8de59fa63bd9ec15c9296ab739b4cfb5_b.png)
+
+查看缺失值个数
+
+```
+md.pattern(d)
+```
+
+![img](https://pic4.zhimg.com/v2-9c9db766011f07abf7c93daa10bf09bf_b.png)
+
+![img](https://pic2.zhimg.com/v2-802eace2db3cc4ff58113ca4c0dbe6ed_b.png)
+
+### **1.5** library（VIM）的aggr函数画图
+
+```
+library(VIM)
+aggr(d)
+#代码aggr(sleep, prop = TRUE, numbers = TRUE)将生成相同的图形，但用比例代替了计数。选项numbers = FALSE（默认）删去数值型标签。
+```
+
+![img](https://pic2.zhimg.com/v2-fdb3dd2cadd5140866febffb63bc0d61_b.png)
+
+- 或者也可以使用VIM包的matrixplot函数
+
+```
+> matrixplot(d)
+```
+
+![img](https://pic4.zhimg.com/v2-cd9d8c12a0f2752fce703a0f6840266b_b.png)
+
+```
+#或者用VIM 包的marginplot ，注意，这个图只适用于对两个变量作图
+marginplot(m)
+```
+
+![img](https://pic4.zhimg.com/v2-c835b4bdfb81ac2ed26ee24f17e1d833_b.png)
+
+### **1.6** 可以用Amelia包中的missmap函数（**这个函数对大量的数据，效果会好一些，运行速度相对较快；格式必须是data.frame输入，matrix不行**）
+
+```R
+library(Amelia)
+m <- as.data.frame(d)
+missmap(d, col = c("white", "lightblue"))
+```
+
+![img](https://pic1.zhimg.com/v2-e2eb264938edfa40f867c7471a7ddd30_b.png)
+
+## 2、定位和去除缺失值
+
+### **2.1** 行删除
+
+- 最简单的方法就是**is.na()**，返回的是ture和false，然后就可以定位缺失值
+
+```
+r <- is.na(d)
+```
+
+![img](https://pic2.zhimg.com/v2-b50a4e9b96decac02c753da3f541c72d_b.png)
+
+is.na返回的结果
+
+- 根据某一列来选择
+
+```
+d1 <- d[!r$BloodPressure, ]
+#选择BloodPressure不是NA的行
+```
+
+![img](https://pic1.zhimg.com/v2-802c9dd9e6d789a8006478ba4b50e764_b.png)
+
+可以看到，这样用false的反面（true）选择了733行，含有NA的35行被丢弃
+
+- 同样可以使用**na.omit函数**（去除所有含缺失值的行）
+
+![img](https://pic3.zhimg.com/v2-fa27f459be38fee976bed270b0a36fae_b.png)
+
+可以看到na.omit去除了所有含缺失值的行
+
+- 或者用complete.case函数
+
+![img](https://pic2.zhimg.com/v2-e17393a4d851f2ae04c35717f1742439_b.png)
+
+### **2.2** 80%规则。在代谢组学中，有一个80%规则，少于80%的variable应当去除。
+
+```
+ rowSums(is.na(d))/ncol(d) #计算缺失值的比例
+```
+
+![img](https://pic2.zhimg.com/v2-f5fef087ba3e5070be78bf53a81206b9_b.png)
+
+```
+r1 <- rowSums(is.na(d))/ncol(d) >= 0.2
+#r1是缺失值大于0.2的行
+d5 <- d[!r1, ]
+#取子集
+```
+
+![img](https://pic3.zhimg.com/v2-44739e6b0b616b1ad3e46bd89123fada_b.png)
+
+## 3、缺失值填补(包括单变量填补和多变量填补)
+
+### 单变量填补（即单一变量，如0，均值，中位数，众数等等）
+
+> 简单插补的一个优点是，解决“缺失值问题”时不会减少分析过程中可用的样本量。虽然简单插补用法很简单，但是对于非MCAR的数据会产生有偏的结果。若缺失数据的数目非常大，那么简单插补很可能会低估标准差、曲解变量间的相关性，并会生成不正确的统计检验的p值。与成对删除一样，我建议在解决缺失数据的问题时尽量避免使用该方法。 from 《R语言实战》
+
+### **3.1** 使用固定值，如0，进行填补, 用R编写一个函数，然后用apply或者sapply进行遍历
+
+```
+fix(m)#修改m，修改后如下：
+> m
+  a  b
+1 1 10
+2 3  1
+3 3  8
+4 9 NA
+#def function
+fun1 <- function(x) {
+     x[is.na(x)] <- 0
+     x
+}
+> sapply(m, fun1)
+     a  b
+[1,] 1 10
+[2,] 3  1
+[3,] 3  8
+[4,] 9  0
+```
+
+- **或者直接用is.na进行0的赋值**
+
+```
+m[is.na(m)] <- 0
+#############
+m
+  a  b
+1 1 10
+2 3  1
+3 3  8
+4 9  0
+```
+
+### **3.2** 使用均值、中位数填补，同样：
+
+```
+#mean
+fun2 <- function(x) {
+    x[is.na(x)] <- mean(x, na.rm = TRUE)
+    x
+}
+sapply(m, fun2)
+     a         b
+[1,] 1 10.000000
+[2,] 3  1.000000
+[3,] 3  8.000000
+[4,] 9  6.333333
+#median
+fun3 <- function(x) {
+    x[is.na(x)] <- median(x, na.rm = TRUE)
+    x
+}
+sapply(m, fun3)
+     a  b
+[1,] 1 10
+[2,] 3  1
+[3,] 3  8
+[4,] 9  8
+```
+
+### 3.3 多变量填补：如随机森林（RF），奇异值分解（SVD），k最近邻（kNN）和左删失数据的分位数回归插补（QRILC）等
+
+- 其它赋值方式，如随机森林（RF），奇异值分解（SVD），k最近邻（kNN）和左删失数据的分位数回归插补（QRILC）等，这些方法由于时间原因，留待以后进行实现。
+- 可参考：[R语言之缺失值和异常值处理](https://www.jianshu.com/p/70717e86e954)
+
+- 我觉得下面一张图能够很好的总结我上面讨论的，**缺失值识别的一系列问题，以及相对应的解决方法：**
+
+![img](https://pic2.zhimg.com/v2-e6008cdfa13c6183a1ba823ad892c1f5_b.png)
+
+![img](https://pic1.zhimg.com/v2-b1e9b482cfd04008cd83cff6e54ba358_b.png)
+
+> from 《R语言实战》
+
+Reference：
+
+1. [数据预处理中的缺失值问题](https://github.com/elise-is/Statistical_Blog/blob/master/Missing_Value/MVI.md#12-缺失值的可视化) 
+2. Wei, R. , Wang, J. , Su, M. , Jia, E. , Chen, S. , & Chen, T. , et al. (2018). Missing value imputation approach for mass spectrometry-based metabolomics data.*Scientific Reports,8*(1), 663.
+3. Bijlsma, S. , Bobeldijk, I. , Verheij, E. R. , Ramaker, R. , Kochhar, S. , & Macdonald, I. A. , et al. (2006). Large-scale human metabolomics studies:? a strategy for data (pre-) processing and validation.*Analytical Chemistry,78*(2), 567-574.
+4. RobertI.Kabacoff, 卡巴科弗, 陈钢, 肖楠, & 高涛. (2013). R语言实战.
